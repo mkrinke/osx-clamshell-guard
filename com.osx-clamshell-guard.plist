@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.osx-clamshell-guard</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PREFIX__/bin/osx-clamshell-guard</string>
+        <string>-t</string>
+        <string>30</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/osx-clamshell-guard/osx-clamshell-guard.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/osx-clamshell-guard/osx-clamshell-guard.log</string>
+</dict>
+</plist>
