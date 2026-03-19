@@ -11,8 +11,7 @@ let kIOMsgSystemWillSleep: UInt32    = 0xE0000280
 let nullAssertion = IOPMAssertionID(kIOPMNullAssertionID)
 
 // MARK: - Configuration
-
-let version = "1.0.0"
+// version is defined in Sources/Version.swift (generated at build time)
 
 func parseArguments() -> TimeInterval {
     let args = CommandLine.arguments

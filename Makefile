@@ -4,11 +4,17 @@ PLIST_NAME = com.osx-clamshell-guard.plist
 DAEMON_DIR = /Library/LaunchDaemons
 LOG_DIR    = /var/log/osx-clamshell-guard
 LABEL      = com.osx-clamshell-guard
+VERSION   ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0-dev")
+
+SOURCES    = Sources/main.swift Sources/Version.swift
 
 .PHONY: build install install-service uninstall load unload restart status log clean
 
-build:
-	swiftc -O -o $(BINARY) Sources/main.swift
+Sources/Version.swift:
+	echo 'let version = "$(VERSION)"' > $@
+
+build: Sources/Version.swift
+	swiftc -O -o $(BINARY) $(SOURCES)
 
 install: build
 	install -d $(PREFIX)/bin
@@ -46,4 +52,4 @@ log:
 	tail -f $(LOG_DIR)/$(BINARY).log
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) Sources/Version.swift
