@@ -1,0 +1,4 @@
+osx-clamshell-guard
+.DS_Store
+*.o
+.build/
