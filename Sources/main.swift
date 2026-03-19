@@ -51,6 +51,7 @@ var notificationPort: IONotificationPortRef?
 var notifier: io_object_t = 0
 var currentAssertionID: IOPMAssertionID = nullAssertion
 var graceTimer: DispatchSourceTimer?
+var clamshellSleepDisabled = false
 
 var inGracePeriod: Bool {
     currentAssertionID != nullAssertion
@@ -70,6 +71,34 @@ func log(_ message: String) {
     fflush(stdout)
 }
 
+// MARK: - System Sleep Control
+
+/// Disables or re-enables system sleep via pmset. Unlike IOPMAssertions
+/// (which only prevent idle sleep), this prevents ALL sleep including
+/// clamshell sleep triggered by lid close during dock PD renegotiation.
+///
+/// Uses `pmset disablesleep` which requires root. The setting persists
+/// until explicitly reverted — it is NOT automatically cleaned up if the
+/// process crashes. The daemon ensures it is re-enabled on startup and
+/// on graceful shutdown. If launchd restarts after a crash, the startup
+/// reset will clear any stale state.
+func setSystemSleepDisabled(_ disabled: Bool) {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+    task.arguments = ["disablesleep", disabled ? "1" : "0"]
+    do {
+        try task.run()
+        task.waitUntilExit()
+        if task.terminationStatus == 0 {
+            clamshellSleepDisabled = disabled
+        } else {
+            log("Warning: pmset disablesleep \(disabled ? "1" : "0") exited with status \(task.terminationStatus)")
+        }
+    } catch {
+        log("Warning: failed to run pmset: \(error)")
+    }
+}
+
 // MARK: - Grace Period Management
 
 func startGracePeriod() {
@@ -83,10 +112,14 @@ func startGracePeriod() {
         currentAssertionID = nullAssertion
     }
 
+    // Disable all sleep — prevents clamshell sleep on lid close during PD renegotiation
+    setSystemSleepDisabled(true)
+
+    // Also create an idle sleep assertion as belt-and-suspenders
     let reason = "osx-clamshell-guard: dock PD renegotiation grace period" as CFString
     var assertionID = nullAssertion
     let result = IOPMAssertionCreateWithName(
-        kIOPMAssertionTypePreventSystemSleep as CFString,
+        kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
         IOPMAssertionLevel(kIOPMAssertionLevelOn),
         reason,
         &assertionID
@@ -94,10 +127,9 @@ func startGracePeriod() {
 
     if result == kIOReturnSuccess {
         currentAssertionID = assertionID
-        log("Wake detected — preventing sleep for \(Int(gracePeriod))s")
+        log("Wake detected — preventing sleep for \(Int(gracePeriod))s (clamshell sleep disabled)")
     } else {
         log("Warning: failed to create sleep assertion (IOReturn: \(result))")
-        return
     }
 
     let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -116,8 +148,13 @@ func endGracePeriod() {
     if inGracePeriod {
         IOPMAssertionRelease(currentAssertionID)
         currentAssertionID = nullAssertion
-        log("Grace period ended — normal sleep behavior restored")
     }
+
+    if clamshellSleepDisabled {
+        setSystemSleepDisabled(false)
+    }
+
+    log("Grace period ended — normal sleep behavior restored")
 }
 
 // MARK: - IOKit Power Callback
@@ -133,7 +170,7 @@ let powerCallback: IOServiceInterestCallback = {
         if inGracePeriod {
             // Deny the sleep request during the grace period
             IOCancelPowerChange(rootPort, Int(bitPattern: messageArgument))
-            log("Denied sleep request during grace period")
+            log("Denied idle sleep request during grace period")
         } else {
             IOAllowPowerChange(rootPort, Int(bitPattern: messageArgument))
         }
@@ -172,6 +209,10 @@ func setupSignalHandlers() {
 // MARK: - Main
 
 setupSignalHandlers()
+
+// Ensure clean state on startup (re-enables sleep if a previous instance
+// crashed during a grace period with sleep disabled)
+setSystemSleepDisabled(false)
 
 rootPort = IORegisterForSystemPower(nil, &notificationPort, powerCallback, &notifier)
 guard rootPort != 0 else {
